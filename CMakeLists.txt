@@ -178,12 +178,14 @@ add_library(${PROJECT_NAME} SHARED
   "src/convert_builtin_interfaces.cpp"
   "src/bridge.cpp"
   ${generated_files})
+
 ament_target_dependencies(${PROJECT_NAME}
   ${prefixed_ros1_message_packages}
   ${ros2_interface_packages}
   "rclcpp"
   "ros1_roscpp"
-  "ros1_std_msgs")
+  "ros1_std_msgs"
+  "std_msgs")
 
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
