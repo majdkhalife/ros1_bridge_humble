@@ -185,7 +185,8 @@ ament_target_dependencies(${PROJECT_NAME}
   "rclcpp"
   "ros1_roscpp"
   "ros1_std_msgs"
-  "std_msgs")
+  "diagnostic_msgs"   # <-- Added dependency for diagnostic_msgs
+)
 
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
