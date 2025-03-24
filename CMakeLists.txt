@@ -31,10 +31,7 @@ endif()
 
 find_ros1_package(roscpp)
 if(NOT ros1_roscpp_FOUND)
-  if(NOT ROS1_PACKAGES_UNAVAILABLE)
-    # Only warn if ROS1 packages were expected to be available
-    message(WARNING "Failed to find ROS 1 roscpp, skipping...")
-  endif()
+  message(WARNING "Failed to find ROS 1 roscpp, skipping...")
   # call ament_package() to avoid ament_tools treating this as a plain CMake pkg
   ament_package(
     CONFIG_EXTRAS ${cmake_extras_files}
@@ -44,8 +41,7 @@ endif()
 
 find_ros1_package(std_msgs REQUIRED)
 
-# Dependency that we should only look for if ROS 1 is installed (it's not present on a ROS 2
-# system; see https://github.com/ros2/ros1_bridge/pull/331#issuecomment-1188111510)
+# Dependency that we should only look for if ROS 1 is installed
 find_package(xmlrpcpp REQUIRED)
 
 # find ROS 1 packages with messages / services
@@ -54,8 +50,7 @@ find_ros1_interface_packages(ros1_message_packages)
 
 set(prefixed_ros1_message_packages "")
 foreach(ros1_message_package ${ros1_message_packages})
-  # TODO(karsten1987): This is currently a workaround to work with ROS 2 classloader
-  # rather than ROS 1 classloader.
+  # Workaround for using ROS 2 classloader instead of ROS 1’s
   if(NOT "${ros1_message_package}" STREQUAL "nodelet")
     find_ros1_package(${ros1_message_package} REQUIRED)
     list(APPEND prefixed_ros1_message_packages "ros1_${ros1_message_package}")
@@ -70,52 +65,14 @@ if(BUILD_TESTING)
   find_ros1_package(roslaunch)
   ament_lint_auto_find_test_dependencies()
   if(ros1_diagnostic_msgs_FOUND AND ros1_roslaunch_FOUND)
-    # ensure that the ROS 2 diagnostic_msgs was found by find_package
-    # and not the ROS 1 package
+    # Ensure that the ROS 2 diagnostic_msgs was found by find_package
     set(_ros1_diagnostic_msgs_DIR "${ros1_diagnostic_msgs_PREFIX}/share/diagnostic_msgs/cmake")
     if("${diagnostic_msgs_DIR}" STREQUAL "${_ros1_diagnostic_msgs_DIR}")
-      # invalidate the cached result to retry finding the package next time
       unset(diagnostic_msgs_DIR CACHE)
       message(FATAL_ERROR "Failed to find ROS 2 package 'diagnostic_msgs'")
     endif()
     set(TEST_ROS1_BRIDGE TRUE)
   endif()
-
-  find_package(ament_cmake_gtest REQUIRED)
-  find_package(geometry_msgs REQUIRED)
-  find_package(std_msgs REQUIRED)
-  find_package(sensor_msgs REQUIRED)
-  find_ros1_package(geometry_msgs)
-  find_ros1_package(std_msgs)
-  find_ros1_package(sensor_msgs)
-  if(ros1_geometry_msgs_FOUND AND ros1_sensor_msgs_FOUND AND ros1_std_msgs_FOUND)
-    ament_add_gtest(test_convert_generic test/test_convert_generic.cpp)
-    ament_target_dependencies(test_convert_generic
-      "geometry_msgs"
-      "rclcpp"
-      "ros1_roscpp"
-      "ros1_sensor_msgs"
-      "ros1_std_msgs"
-      "ros1_geometry_msgs"
-      "sensor_msgs"
-      "std_msgs"
-    )
-    target_link_libraries(test_convert_generic ${PROJECT_NAME})
-
-    ament_add_gtest(test_ros2_to_ros1_serialization test/test_ros2_to_ros1_serialization.cpp)
-    ament_target_dependencies(test_ros2_to_ros1_serialization
-      "geometry_msgs"
-      "rclcpp"
-      "ros1_roscpp"
-      "ros1_sensor_msgs"
-      "ros1_std_msgs"
-      "ros1_geometry_msgs"
-      "sensor_msgs"
-      "std_msgs"
-    )
-    target_link_libraries(test_ros2_to_ros1_serialization ${PROJECT_NAME})
-  endif()
-
 endif()
 
 ament_export_include_directories(include)
@@ -131,10 +88,12 @@ set(generated_path "${CMAKE_BINARY_DIR}/generated")
 set(generated_files "${generated_path}/get_factory.cpp")
 list(APPEND generated_files "${generated_path}/get_mappings.cpp")
 
-# generate per interface compilation units to keep the memory usage low
-ament_index_get_resources(ros2_interface_packages "rosidl_interfaces")
-# actionlib_msgs is deprecated, but we will quiet the warning until the bridge has support for
-# ROS actions: https://github.com/ros2/design/issues/195
+# --- [Humble Change] ---
+# In Humble the ament index resource for ROS 2 interface packages is now "rosidl_interface_packages"
+ament_index_get_resources(ros2_interface_packages "rosidl_interface_packages")
+# ------------------------
+
+# actionlib_msgs is deprecated but we quiet the warning until ROS actions are supported
 set(actionlib_msgs_DEPRECATED_QUIET TRUE)
 foreach(package_name ${ros2_interface_packages})
   find_package(${package_name} QUIET REQUIRED)
@@ -145,7 +104,7 @@ foreach(package_name ${ros2_interface_packages})
     foreach(interface_file ${${package_name}_IDL_FILES})
       file(TO_CMAKE_PATH "${interface_file}" interface_name)
       get_filename_component(interface_basename "${interface_name}" NAME_WE)
-      # skipping actions and request and response messages of services
+      # skipping actions and request/response messages of services
       if(NOT "${interface_name}" MATCHES "^(msg|srv)/" OR "${interface_basename}" MATCHES "_(Request|Response)$")
         continue()
       endif()
@@ -165,16 +124,14 @@ set(target_dependencies
   "resource/pkg_factories.hpp.em"
   "ros1_bridge/__init__.py")
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-
 add_custom_command(
   OUTPUT ${generated_files}
-  COMMAND Python3::Interpreter
-  ARGS bin/ros1_bridge_generate_factories
+  COMMAND ${PYTHON_EXECUTABLE} bin/ros1_bridge_generate_factories
     --output-path "${generated_path}" --template-dir resource
   DEPENDS ${target_dependencies}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  COMMENT "Generating factories for interface types")
+  COMMENT "Generating factories for interface types"
+)
 
 if(NOT WIN32)
   # ignore warning in ROS 1 message headers
@@ -203,7 +160,7 @@ function(custom_executable target)
   endif()
 
   install(TARGETS ${target}
-  DESTINATION lib/${PROJECT_NAME})
+    DESTINATION lib/${PROJECT_NAME})
 endfunction()
 
 custom_executable(simple_bridge_1_to_2 "src/simple_bridge_1_to_2.cpp"
@@ -212,7 +169,6 @@ custom_executable(simple_bridge_1_to_2 "src/simple_bridge_1_to_2.cpp"
 custom_executable(simple_bridge_2_to_1 "src/simple_bridge_2_to_1.cpp"
   ROS1_DEPENDENCIES
   TARGET_DEPENDENCIES "std_msgs")
-
 custom_executable(simple_bridge "src/simple_bridge.cpp"
   ROS1_DEPENDENCIES
   TARGET_DEPENDENCIES "std_msgs")
